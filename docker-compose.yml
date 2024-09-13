@@ -1,0 +1,12 @@
+version: '1'
+services:
+  web:
+    build: . # This tells Docker to build the image using the Dockerfile in the current directory 
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      # This mounts the project folder (.) from your host machine to the container’s /app directory, allowing live reloading during development.
+      FLASK_ENV: development
+    command: flask run --host=0.0.0.0
