@@ -39,7 +39,7 @@ class ImageDatasetAnalyzer:
             transforms.ToTensor()
         ])
 
-        for img_path in tqdm(self.image_paths, desc="Analyzing images"):
+        for img_path in tqdm(self.image_paths, desc="Gathering images"):
             try:
                 # Convert all images to RGB for consistency
                 image = Image.open(img_path).convert('RGB')
