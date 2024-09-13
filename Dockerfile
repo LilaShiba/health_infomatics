@@ -18,7 +18,7 @@ RUN apt-get update && \
 COPY . /app
 
 # Expose port 5000 for Flask
-EXPOSE 5000
+EXPOSE 5001
 
 # Set environment variables (optional)
 ENV FLASK_APP=app
