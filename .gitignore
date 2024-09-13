@@ -1,0 +1,8 @@
+*.tiff
+*.tif
+*.jpg
+*.jpeg
+./Blood_Cancer_TIFFS
+health_ai
+*.DS_Store
+./stages
