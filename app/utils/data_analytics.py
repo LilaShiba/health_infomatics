@@ -48,10 +48,13 @@ class ImageDatasetAnalyzer:
             except Exception as e:
                 print(f"Error loading image {img_path}: {e}")
 
-    def analyze_color_distribution(self):
+    def analyze_color_distribution(self, output_file=None):
         """
         Analyze color distribution across the dataset and compute the mean values for Red, Green, Blue,
         and Brightness for each image. Store them in a pandas DataFrame with 4 columns, with a progress bar.
+
+        :param output_file: Optional, specify the file path to save the plot.
+        :return: DataFrame with color stats for further analysis.
         """
         color_stats = {
             'Red': [],
@@ -81,21 +84,48 @@ class ImageDatasetAnalyzer:
         # Convert the color stats to a pandas DataFrame
         df = pd.DataFrame(color_stats)
 
-        # Display the DataFrame
-        print(df)
+        # Display the DataFrame (optional, just showing the first few rows)
+        print(df.head())
 
-        # Optionally, you can plot the distributions if needed
-        df.plot(kind='box', title='Color Channel and Brightness Distribution')
+        # Plot the distributions
+        df.plot(
+            kind='box', title=f'{output_file} Color Channel and Brightness Distribution')
+
+        # Save plot if output_file is provided
+        if output_file:
+            plt.savefig(output_file)
         plt.show()
+
+        return df  # Return DataFrame for further use if needed
+
+    def batch_process_folders(self):
+        """
+        Iterate over the base dataset folder containing subfolders, each of which is a dataset to be processed.
+        Each dataset will be processed and the results saved in the 'data/output' folder.
+        """
+        output_dir = "app/data/output"
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Iterate over all subfolders in the dataset_path
+        for folder in os.listdir(self.dataset_path):
+            folder_path = os.path.join(self.dataset_path, folder)
+
+            # Ensure it's a directory
+            if os.path.isdir(folder_path):
+                print(f"Processing dataset in folder: {folder}")
+                temp_obj = ImageDatasetAnalyzer(folder_path)
+                temp_obj.load_images()
+
+                # Save plot for each dataset with a unique filename
+                output_file = os.path.join(
+                    output_dir, f"{folder}_color_distribution.png")
+                temp_obj.analyze_color_distribution(output_file=output_file)
 
 
 # Usage Example
 if __name__ == "__main__":
-    # Replace with the actual path to your image dataset
-    dataset_path = 'app/Blood_Cancer_TIFFS'
-    print("finding images")
+    # Base path to your dataset
+    dataset_path = 'app/data/stages'
     analyzer = ImageDatasetAnalyzer(dataset_path)
-    print("load images")
-    analyzer.load_images()
-    print("analyzing images")
-    analyzer.analyze_color_distribution()
+    analyzer.batch_process_folders()
