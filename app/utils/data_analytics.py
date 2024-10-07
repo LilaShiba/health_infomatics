@@ -30,13 +30,22 @@ class ImageDatasetAnalyzer:
         ]
         return image_paths
 
-    def load_images(self, resize_to=(64, 64), save_blurred=True):
+    def load_images(self, resize_to=(64, 64), save_blurred=True) -> dict:
         """
         Load images, resize, and normalize them.
 
         Parameters:
         - resize_to: tuple, resize dimensions for the images.
         - save_blurred: bool, whether to save blurred images to output directory.
+
+        Return:
+        res = {
+            'rgb': [],
+            'bw': [],
+            'rgb_blurr': [],
+            'bw_blurr': []
+        }
+
         """
         transform = transforms.Compose([
             transforms.Resize(resize_to),
@@ -46,14 +55,26 @@ class ImageDatasetAnalyzer:
         output_dir = 'data/output'
         # Ensure the output directory exists
         os.makedirs(output_dir, exist_ok=True)
+        res = {
+            'rgb': [],
+            'bw': [],
+            'rgb_blurr': [],
+            'bw_blurr': []
+        }
 
         for img_path in tqdm(self.image_paths, desc="Gathering images"):
             try:
                 # Convert all images to RGB for consistency
                 image = Image.open(img_path).convert('RGB')
 
+                # Make a copy in Grey Scale
+                bw_image = image.convert('L')
+
                 # Apply Gaussian Blur
                 blurred_image = image.filter(
+                    ImageFilter.GaussianBlur(radius=3))
+
+                blurred_image_bw = bw_image.filter(
                     ImageFilter.GaussianBlur(radius=3))
 
                 # Save blurred image if required
@@ -68,9 +89,21 @@ class ImageDatasetAnalyzer:
 
                 # Transform to tensor and store
                 image_tensor = transform(image)
+                image_tensor_bw = transform(bw_image)
+                blurred_image_tensor = transform(blurred_image)
+                blurred_image_bw_tensor = transform(blurred_image_bw)
+
                 self.image_data.append(image_tensor)
+
+                res['rgb'].append(image_tensor)
+                res['bw'].append(image_tensor_bw)
+                res['rgb_blurr'].append(blurred_image_tensor)
+                res['bw_blurr'].append(blurred_image_bw_tensor)
+
             except Exception as e:
                 print(f"Error loading image {img_path}: {e}")
+
+            return res
 
     def analyze_color_distribution(self, output_file=None):
         """
@@ -143,12 +176,15 @@ class ImageDatasetAnalyzer:
             if os.path.isdir(folder_path):
                 print(f"Processing dataset in folder: {folder}")
                 temp_obj = ImageDatasetAnalyzer(folder_path)
-                temp_obj.load_images()
+                _ = temp_obj.load_images()
 
                 # Save plot for each dataset with a unique filename
                 output_file = os.path.join(
                     output_dir, f"{folder}_color_distribution.png")
+                # Analyze Images
+                # TODO: Take in DICT
                 temp_obj.analyze_color_distribution(output_file=output_file)
+                # TODO: return Dataframe after processing
 
 
 # Usage Example
