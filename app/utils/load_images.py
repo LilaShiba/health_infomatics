@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
+import random
 
 
 class ImageLoad:
@@ -54,7 +55,16 @@ class ImageLoad:
         img = cv2.imread(image_path)
         img_resized = cv2.resize(img, self.resize_to)  # Resize the image
         # TODO add noise to each image
+        if random.randint(0, 1) > 0.7:
+            return self._add_gaussian_noise(img_resized)
         return img_resized
+
+    def _add_gaussian_noise(self, image: np.ndarray, mean: float = 0, sigma: float = 25) -> np.ndarray:
+        """Adds Gaussian noise to the image."""
+
+        noise = np.random.normal(mean, sigma, image.shape).astype(np.uint8)
+        # Add the noise to the image
+        return cv2.add(image, noise)
 
     def save_to_folders(self, fname: str, image: np.ndarray, idx: str, category: str):
         """Saves the processed image to the specified category folder."""
