@@ -53,6 +53,7 @@ class ImageLoad:
         """Opens and transforms the image into NumPy array form."""
         img = cv2.imread(image_path)
         img_resized = cv2.resize(img, self.resize_to)  # Resize the image
+        # TODO add noise to each image
         return img_resized
 
     def save_to_folders(self, fname: str, image: np.ndarray, idx: str, category: str):
@@ -76,19 +77,15 @@ class ImageLoad:
 
     def _rotate_90_counter_clockwise(self, image: np.ndarray) -> np.ndarray:
         """Rotates the image 90 degrees counterclockwise."""
-        return self._rotate_image(image, flip_code=0)
+        return np.rot90(image, k=1)
 
     def _rotate_90_clockwise(self, image: np.ndarray) -> np.ndarray:
         """Rotates the image 90 degrees clockwise."""
-        return self._rotate_image(image, flip_code=1)
+        return np.rot90(image, k=-1)
 
     def _rotate_180(self, image: np.ndarray) -> np.ndarray:
         """Rotates the image 180 degrees."""
-        return self._rotate_image(image, flip_code=-1)
-
-    def _rotate_image(self, image: np.ndarray, flip_code: int) -> np.ndarray:
-        """Helper function to rotate an image."""
-        return cv2.flip(image, flip_code)
+        return cv2.flip(image, -1)
 
     def _add_gaussian_blurr(self, image: np.ndarray) -> np.ndarray:
         """Applies Gaussian blur to the image."""
