@@ -1,11 +1,8 @@
 import os
-import torch
-import torchvision.transforms as transforms
-from PIL import Image, ImageFilter
 import cv2
+import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
-import numpy as np
 
 
 class ImageLoad:
@@ -17,35 +14,32 @@ class ImageLoad:
             dataset_path (str): Path to the dataset directory containing images.
             resize_to (tuple): Dimensions to resize images to (default: (64, 64)).
         """
-        self.radius = 10
+        self.resize_to = resize_to
         self.dataset_path = dataset_path
         self.image_tensors = defaultdict(list)
         self.output_dir = 'data/output'
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.transform = transforms.Compose([
-            transforms.Resize(resize_to),
-            transforms.ToTensor()
-        ])
-
         # Load image paths
         self.image_paths = self._load_image_paths()
-        self.final_image_tensors, self.all_together_tensors = self.main_loop()
+        self.final_image_arrays = self.main_loop()
 
     def main_loop(self) -> dict:
         """
         Processes all images and stores the results.
         """
-        all_together_tensors = []
+        all_together_arrays = []
         print('Start batch process...')
 
         for idx, (fname, img_path, category) in enumerate(tqdm(self.image_paths, desc="Processing images")):
+            image = self._open_img(img_path)
+
             processed_images = [
-                self._open_img(img_path),
-                self._add_gaussian_blurr(img_path),
-                self._rotate_180(img_path),
-                self._rotate_90_clockwise(img_path),
-                self._rotate_90_counter_clockwise(img_path)
+                image,
+                self._add_gaussian_blurr(image),
+                self._rotate_180(image),
+                self._rotate_90_clockwise(image),
+                self._rotate_90_counter_clockwise(image)
             ]
 
             for idx_i, img in enumerate(processed_images):
@@ -53,14 +47,13 @@ class ImageLoad:
                 self.save_to_folders(fname, img, id_, category)
 
         print('Batch process completed.')
-        return (self.image_tensors, all_together_tensors)
+        return all_together_arrays
 
     def _open_img(self, image_path: str) -> np.ndarray:
         """Opens and transforms the image into NumPy array form."""
-        img = Image.open(image_path).convert('RGB')
-        img_tensor = self.transform(img)
-        # Convert to HWC format (Height, Width, Channels)
-        return img_tensor.permute(1, 2, 0).numpy()
+        img = cv2.imread(image_path)
+        img_resized = cv2.resize(img, self.resize_to)  # Resize the image
+        return img_resized
 
     def save_to_folders(self, fname: str, image: np.ndarray, idx: str, category: str):
         """Saves the processed image to the specified category folder."""
@@ -81,41 +74,25 @@ class ImageLoad:
         if not success:
             raise IOError(f"Failed to save the image at {file_path}")
 
-    def _bw(self, image_path: str, blur: bool = False) -> np.ndarray:
-        """Converts the image to black and white, with optional blurring."""
-        image = Image.open(image_path).convert('L')
-        if blur:
-            image = image.filter(ImageFilter.GaussianBlur(self.radius))
-        img_tensor = self.transform(image)
-        return img_tensor.squeeze().numpy()  # Convert to 2D array for grayscale
-
-    def _rotate_90_counter_clockwise(self, image_path: str) -> np.ndarray:
+    def _rotate_90_counter_clockwise(self, image: np.ndarray) -> np.ndarray:
         """Rotates the image 90 degrees counterclockwise."""
-        return self._rotate_image(image_path, flip_code=0)
+        return self._rotate_image(image, flip_code=0)
 
-    def _rotate_90_clockwise(self, image_path: str) -> np.ndarray:
+    def _rotate_90_clockwise(self, image: np.ndarray) -> np.ndarray:
         """Rotates the image 90 degrees clockwise."""
-        return self._rotate_image(image_path, flip_code=1)
+        return self._rotate_image(image, flip_code=1)
 
-    def _rotate_180(self, image_path: str) -> np.ndarray:
+    def _rotate_180(self, image: np.ndarray) -> np.ndarray:
         """Rotates the image 180 degrees."""
-        return self._rotate_image(image_path, flip_code=-1)
+        return self._rotate_image(image, flip_code=-1)
 
-    def _rotate_image(self, image_path: str, flip_code: int) -> np.ndarray:
-        """Helper function to read and rotate an image."""
-        image = cv2.imread(image_path)
+    def _rotate_image(self, image: np.ndarray, flip_code: int) -> np.ndarray:
+        """Helper function to rotate an image."""
         return cv2.flip(image, flip_code)
 
-    def _add_gaussian_blurr(self, image_path: str) -> np.ndarray:
+    def _add_gaussian_blurr(self, image: np.ndarray) -> np.ndarray:
         """Applies Gaussian blur to the image."""
-        image = cv2.imread(image_path)
         return cv2.GaussianBlur(image, (7, 7), 0)
-
-    def _add_gaussian_noise(self, image_path: str, mu: float = 0, sigma: float = 25) -> np.ndarray:
-        """Adds Gaussian noise to the image."""
-        image = cv2.imread(image_path)
-        noise = np.random.normal(mu, sigma, image.shape).astype(np.uint8)
-        return cv2.add(image, noise)
 
     def _load_image_paths(self) -> list[tuple[str, str, str]]:
         """
