@@ -2,8 +2,10 @@ import os
 import torch
 import torchvision.transforms as transforms
 from PIL import Image, ImageFilter
+import cv2
 from collections import defaultdict
 from tqdm import tqdm
+import numpy as np
 
 
 class ImageLoad:
@@ -15,98 +17,123 @@ class ImageLoad:
             dataset_path (str): Path to the dataset directory containing images.
             resize_to (tuple): Dimensions to resize images to (default: (64, 64)).
         """
-        # blurr radius
-        self.radius = 3
+        self.radius = 10
         self.dataset_path = dataset_path
         self.image_tensors = defaultdict(list)
         self.output_dir = 'data/output'
         os.makedirs(self.output_dir, exist_ok=True)
+
         self.transform = transforms.Compose([
             transforms.Resize(resize_to),
             transforms.ToTensor()
         ])
+
         # Load image paths
         self.image_paths = self._load_image_paths()
         self.final_image_tensors, self.all_together_tensors = self.main_loop()
 
     def main_loop(self) -> dict:
         """
-        Iterates over all image paths, processing each one and storing the results.
+        Processes all images and stores the results.
         """
         all_together_tensors = []
         print('Start batch process...')
-        for img_path in tqdm(self.image_paths, desc="Processing images"):
-            original = self._open_img(img_path)
-            blurred_tensor = self._blur(img_path)
-            bw_tensor = self._bw(img_path)
-            bw_blurr = self._bw(img_path, True)
-            rotate_90_tensor, rotate_180_tensor = self._rotate(img_path)
-            # update tensor dict for later analysis
-            self.image_tensors['org'].append(original)
-            self.image_tensors['blur'].append(blurred_tensor)
-            self.image_tensors['bw'].append(bw_tensor)
-            self.image_tensors['bw_blurr'].append(bw_blurr)
-            self.image_tensors['img_90'].append(rotate_90_tensor)
-            self.image_tensors['img_180'].append(rotate_180_tensor)
-            # For Neural Network : )
-            all_together_tensors.append(original)
-            all_together_tensors.append(blurred_tensor)
-            all_together_tensors.append(rotate_90_tensor)
-            all_together_tensors.append(rotate_180_tensor)
+
+        for idx, (fname, img_path, category) in enumerate(tqdm(self.image_paths, desc="Processing images")):
+            processed_images = [
+                self._open_img(img_path),
+                self._add_gaussian_blurr(img_path),
+                self._rotate_180(img_path),
+                self._rotate_90_clockwise(img_path),
+                self._rotate_90_counter_clockwise(img_path)
+            ]
+
+            for idx_i, img in enumerate(processed_images):
+                id_ = f"{idx + 1}_{idx_i}"
+                self.save_to_folders(fname, img, id_, category)
 
         print('Batch process completed.')
         return (self.image_tensors, all_together_tensors)
 
-    def _open_img(self, image_path):
-        '''
-        returns original image in tensor form
-        '''
+    def _open_img(self, image_path: str) -> np.ndarray:
+        """Opens and transforms the image into NumPy array form."""
         img = Image.open(image_path).convert('RGB')
-        return self.transform(img)
+        img_tensor = self.transform(img)
+        # Convert to HWC format (Height, Width, Channels)
+        return img_tensor.permute(1, 2, 0).numpy()
 
-    def _blur(self, image_path: str, radius: int = None) -> torch.Tensor:
-        """
-        Applies a Gaussian blur to the image at the given path.
-        """
-        if not radius:
-            radius = self.radius
-        image = Image.open(image_path).convert('RGB')
-        blurred_image = image.filter(ImageFilter.GaussianBlur(radius))
-        return self.transform(blurred_image)
+    def save_to_folders(self, fname: str, image: np.ndarray, idx: str, category: str):
+        """Saves the processed image to the specified category folder."""
+        # Ensure image is in the correct format
+        if not isinstance(image, np.ndarray):
+            raise ValueError("The image must be a NumPy array.")
 
-    def _bw(self, image_path: str, blur=False) -> torch.Tensor:
-        """
-        Converts the image at the given path to black and white.
-        """
-        image = Image.open(image_path).convert('L')  # Convert to grayscale
-        if not blur:
-            return self.transform(image)
-        else:
-            return self.transform(image.filter(ImageFilter.GaussianBlur(self.radius)))
+        # Create the category folder if it doesn't exist
+        category_path = os.path.join(self.output_dir, 'processed', category)
+        os.makedirs(category_path, exist_ok=True)
 
-    def _rotate(self, image_path: str) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Rotates the image at the given path by 90 and 180 degrees.
-        """
-        image = Image.open(image_path).convert('RGB')
-        rotate_90_image = image.rotate(90)
-        rotate_180_image = image.rotate(180)
-        return self.transform(rotate_90_image), self.transform(rotate_180_image)
+        # Construct the full file path
+        file_path = os.path.join(category_path, f"{idx}_{fname}")
+        print(f"Saving image to: {file_path}")
 
-    def _load_image_paths(self) -> list[str]:
+        # Save the image
+        success = cv2.imwrite(file_path, image)
+        if not success:
+            raise IOError(f"Failed to save the image at {file_path}")
+
+    def _bw(self, image_path: str, blur: bool = False) -> np.ndarray:
+        """Converts the image to black and white, with optional blurring."""
+        image = Image.open(image_path).convert('L')
+        if blur:
+            image = image.filter(ImageFilter.GaussianBlur(self.radius))
+        img_tensor = self.transform(image)
+        return img_tensor.squeeze().numpy()  # Convert to 2D array for grayscale
+
+    def _rotate_90_counter_clockwise(self, image_path: str) -> np.ndarray:
+        """Rotates the image 90 degrees counterclockwise."""
+        return self._rotate_image(image_path, flip_code=0)
+
+    def _rotate_90_clockwise(self, image_path: str) -> np.ndarray:
+        """Rotates the image 90 degrees clockwise."""
+        return self._rotate_image(image_path, flip_code=1)
+
+    def _rotate_180(self, image_path: str) -> np.ndarray:
+        """Rotates the image 180 degrees."""
+        return self._rotate_image(image_path, flip_code=-1)
+
+    def _rotate_image(self, image_path: str, flip_code: int) -> np.ndarray:
+        """Helper function to read and rotate an image."""
+        image = cv2.imread(image_path)
+        return cv2.flip(image, flip_code)
+
+    def _add_gaussian_blurr(self, image_path: str) -> np.ndarray:
+        """Applies Gaussian blur to the image."""
+        image = cv2.imread(image_path)
+        return cv2.GaussianBlur(image, (7, 7), 0)
+
+    def _add_gaussian_noise(self, image_path: str, mu: float = 0, sigma: float = 25) -> np.ndarray:
+        """Adds Gaussian noise to the image."""
+        image = cv2.imread(image_path)
+        noise = np.random.normal(mu, sigma, image.shape).astype(np.uint8)
+        return cv2.add(image, noise)
+
+    def _load_image_paths(self) -> list[tuple[str, str, str]]:
         """
-        Recursively loads image file paths from the dataset directory and its subdirectories with supported image formats.
+        Recursively loads image file paths from the dataset directory.
 
         Returns:
-            list[str]: List of image file paths.
+            list[tuple[str, str, str]]: List of image file paths with their respective category.
         """
         image_extensions = ['.tiff', '.tif', '.jpg', '.jpeg', '.png']
         image_paths = []
 
-        # Walk through all subdirectories and collect image paths
-        for root, _, files in os.walk(self.dataset_path):
-            for fname in files:
-                if any(fname.lower().endswith(ext) for ext in image_extensions):
-                    image_paths.append(os.path.join(root, fname))
+        # Loop through the main dataset directory
+        for category in os.listdir(self.dataset_path):
+            category_path = os.path.join(self.dataset_path, category)
+            if os.path.isdir(category_path):
+                for fname in os.listdir(category_path):
+                    if any(fname.lower().endswith(ext) for ext in image_extensions):
+                        image_paths.append(
+                            (fname, os.path.join(category_path, fname), category))
 
         return image_paths
